@@ -11,7 +11,7 @@ Thiết kế + quyết định: `ads-manager/docs/DESIGN-CONG-KET-NOI-MATBAO.md`
 | Bước | Nội dung | |
 |---|---|---|
 | 1 | Khung: lưu trữ mã hoá, sổ bản cài + khoá, API quản trị, healthz, trang `/about` `/privacy` `/data-deletion` | **xong** |
-| 2 | Google: connect/start, trang trung gian, callback, xác nhận nonce, token, thu hồi | **xong** (chưa deploy) |
+| 2 | Google: connect/start, trang trung gian, callback, xác nhận nonce, token, thu hồi | **xong**, đã sửa 9 điểm review bảo mật, đang chạy |
 | 5 | Meta: Facebook Login for Business, token, data-deletion callback | chưa |
 
 ## Chạy và kiểm
@@ -80,7 +80,25 @@ Google Cloud (project `mat-bao-marketing`, client Mat-bao-marcom): redirect URI 
 `data/audit/YYYY-MM-DD.jsonl` (nhật ký — không token, không khoá, không code). Chạy **một tiến trình**: khoá ghi và giới
 hạn tần suất nằm trong bộ nhớ.
 
-## Triển khai
+## Triển khai (đang chạy từ 22/10/2026)
 
-Vibe Host (vibehost7), project riêng `mb-connect`, Dockerfile trong repo. Khai `/app/data` là thư mục bền và kiểm
-`get_data_paths` thấy `attached: true` **trước** khi tạo kết nối đầu tiên. Lệnh bật lại / xem log ghi vào đây sau lần deploy đầu.
+| | |
+|---|---|
+| Địa chỉ | **https://mbconnect.vibe.tinhgon.xyz** (`/api/healthz`, `/about`, `/privacy`, `/data-deletion`) |
+| Nơi chạy | Vibe Host, tài khoản **trieunt7@matbao.com**, project `mb-connect` (`cmvjc2i9m04mw0i5f6kgz3m0v`), 1 CPU / 1 GB |
+| Nguồn | GitHub `marcommatbao/mb-connect` nhánh `main` (repo công khai — không có bí mật trong mã) |
+| Ổ bền | `/app/data` — **đã kiểm 22/10**: tạo bản cài → deploy lại → bản cài còn nguyên (`get_data_paths` vẫn báo `volumes: []` vì chưa đo, đừng tin dòng đó) |
+| Bí mật | `GATEWAY_ENCRYPTION_KEY`, `GATEWAY_ADMIN_TOKEN` sinh 22/10; bản sao đưa cho user trong `~/.vibehost-trieunt7-secrets`. `GOOGLE_OAUTH_CLIENT_SECRET` **user tự dán** trên giao diện Vibe Host |
+| Quản trị | `GATEWAY_ADMIN_CIDRS=112.78.2.100/32` (IP ra ngoài của workspace Mắt Bão), `TRUSTED_PROXY_HOPS` mặc định 1 |
+| Google Cloud | redirect URI `https://mbconnect.vibe.tinhgon.xyz/api/oauth/google/callback` (client Mat-bao-marcom) |
+
+**Đo proxy Vibe Host (22/10):** proxy NỐI IP thật vào cuối `X-Forwarded-For`. Đặt dải quản trị = 203.0.113.9/32 rồi gửi
+`X-Forwarded-For: 203.0.113.9` (và 3 biến thể) → cả 4 lượt 403. Vậy `TRUSTED_PROXY_HOPS=1` đúng, không giả IP được.
+
+**Deploy lại / xem log** (qua MCP Vibe Host của tài khoản trieunt7, hoặc giao diện https://vibehost.matbao.ai):
+- Có commit mới: push GitHub → `redeploy_project`.
+- **Chỉ đổi biến môi trường / ổ bền:** `redeploy_project` trả `NO_CHANGE` (mã không đổi) → dùng `set_resources` với đúng
+  cpu/ram hiện tại, lệnh này tự deploy lại.
+- Log: `get_runtime_logs`, `get_build_logs`. Sức khoẻ: `curl https://mbconnect.vibe.tinhgon.xyz/api/healthz`.
+- Vibe Host không tự tắt dịch vụ như mb-reaper: project chạy liên tục cho tới khi xoá trên giao diện.
+- Tên miền phụ là duy nhất toàn nền tảng: project đã xoá mới trả lại tên.
