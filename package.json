@@ -1,0 +1,25 @@
+{
+  "name": "mb-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cổng kết nối Mắt Bão: giữ khoá Google/Meta của Mắt Bão, cấp access token ngắn hạn cho các bản cài AdsCommand",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.7"
+  }
+}
