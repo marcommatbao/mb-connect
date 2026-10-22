@@ -36,8 +36,12 @@ export interface Connection {
   createdAt: string
   createdBy: string
   scopes: string[]
-  /** Google: refresh token; Meta: token doanh nghiệp. Luôn mã hoá. */
-  secret: EncryptedField
+  /** Google: refresh token; Meta: token doanh nghiệp. Luôn mã hoá. XOÁ khỏi bản ghi khi thu hồi. */
+  secret?: EncryptedField
+  /** SHA-256 của nonce bản cài giữ trong cookie; kết nối chỉ thành active khi bản cài xác nhận đúng nonce. */
+  nonceHash?: string
+  /** Kết nối pending quá hạn này mà chưa xác nhận → xoá + thu hồi ở nhà cung cấp. */
+  pendingExpiresAt?: string
   metaUserId?: string
   metaBusinessId?: string
   activatedAt?: string

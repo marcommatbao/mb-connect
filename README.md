@@ -11,7 +11,7 @@ Thiết kế + quyết định: `ads-manager/docs/DESIGN-CONG-KET-NOI-MATBAO.md`
 | Bước | Nội dung | |
 |---|---|---|
 | 1 | Khung: lưu trữ mã hoá, sổ bản cài + khoá, API quản trị, healthz, trang `/about` `/privacy` `/data-deletion` | **xong** |
-| 2 | Google: connect/start, callback, token, xác nhận nonce, thu hồi | chưa |
+| 2 | Google: connect/start, trang trung gian, callback, xác nhận nonce, token, thu hồi | **xong** (chưa deploy) |
 | 5 | Meta: Facebook Login for Business, token, data-deletion callback | chưa |
 
 ## Chạy và kiểm
@@ -56,6 +56,23 @@ curl -s -X POST -H "Authorization: Bearer $A" $G/api/admin/installs/<id>/revoke 
 ```
 
 Bản cài tự kiểm khoá: `curl -s -H "Authorization: Bearer <khoá bản cài>" $G/api/v1/install`.
+
+## Luồng kết nối Google (bước 2)
+
+1. Bản cài `POST /api/v1/connect/start {provider:"google", returnPath:"/api/connect/google/return", createdBy, nonceHash}` → `{url}`.
+   `nonceHash` = SHA-256 hex của nonce bản cài giữ trong cookie HttpOnly trên miền của nó.
+2. Trình duyệt khách mở `url` → **trang trung gian** (tên bản cài, tên miền, người bắt đầu) → bấm Tiếp tục (POST) → cổng đặt
+   cookie `mb_state` rồi sang Google (scope `adwords`, offline, consent).
+3. Google → `GET /api/oauth/google/callback` (redirect URI duy nhất). Cổng kiểm state + cookie, đổi code, lưu refresh token
+   mã hoá ở trạng thái **pending**, chuyển về `appUrl/api/connect/google/return?provider=google&ok=1&cid=…`
+   (lỗi: `ok=0&reason=cancelled|access_denied|scope_denied|no_refresh_token|session_mismatch|install_inactive|provider_error|misconfigured`).
+4. Bản cài `POST /api/v1/connections/:cid/confirm {nonce}` → **active** (kết nối active cũ cùng nhà cung cấp bị thu hồi).
+   Pending quá 15 phút không xác nhận → bị xoá + thu hồi ở Google.
+5. Bản cài `POST /api/v1/token {connectionId}` → `{accessToken, expiresAt, provider}` (30 lượt/giờ/kết nối; bản cài cache,
+   xin lại trước hạn 60 giây). Google trả `invalid_grant` → kết nối bị đánh dấu revoked, bản cài nhận 409 `connection_missing`.
+6. Ngắt kết nối: `DELETE /api/v1/connections/:cid` → xoá token ở cổng + thu hồi ở Google.
+
+Google Cloud (project `mat-bao-marketing`, client Mat-bao-marcom): redirect URI `<GATEWAY_URL>/api/oauth/google/callback`.
 
 ## Dữ liệu
 

@@ -3,7 +3,8 @@
 // Khoá thô chỉ trả ra ĐÚNG MỘT LẦN lúc tạo hoặc xoay; cổng chỉ giữ hash.
 // ============================================================
 import { PREV_KEY_GRACE_MS, hashInstallKey, newInstallId, newInstallKey } from "./keys"
-import { mutateConnections, mutateInstalls, type Install, type InstallStatus } from "./store"
+import { revokeAllOfInstall } from "./connections"
+import { mutateInstalls, type Install, type InstallStatus } from "./store"
 
 export class InstallError extends Error {
   constructor(public code: "bad_request" | "not_found", message: string) {
@@ -74,8 +75,8 @@ const TRANSITIONS: Record<"suspend" | "resume" | "revoke", { from: InstallStatus
 }
 
 /**
- * Đổi trạng thái bản cài. Thu hồi = vĩnh viễn: xoá cả khoá cũ đang trong hạn xoay và đánh dấu mọi kết nối revoked.
- * (Thu hồi phía Google/Meta thêm ở bước nối OAuth — xem mini-spec GATEWAY-CONNECT-1 bước 2 và 5.)
+ * Đổi trạng thái bản cài. Thu hồi = vĩnh viễn: xoá cả khoá cũ đang trong hạn xoay, xoá token của mọi kết nối và
+ * thu hồi chúng ở Google/Meta.
  */
 export async function setInstallStatus(id: string, action: keyof typeof TRANSITIONS): Promise<Install> {
   const rule = TRANSITIONS[action]
@@ -91,11 +92,6 @@ export async function setInstallStatus(id: string, action: keyof typeof TRANSITI
     }
     return i
   })
-  if (rule.to === "revoked") {
-    const now = new Date().toISOString()
-    await mutateConnections((conns) => {
-      for (const c of conns) if (c.installId === id && c.status !== "revoked") Object.assign(c, { status: "revoked", revokedAt: now })
-    })
-  }
+  if (rule.to === "revoked") await revokeAllOfInstall(id)
   return install
 }
