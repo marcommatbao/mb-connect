@@ -2,22 +2,30 @@
 import { audit } from "./audit"
 import { ConnectionError } from "./connections"
 import { authInstall, clientIp, jsonError } from "./http"
-import { hit } from "./ratelimit"
+import { hit, isOver } from "./ratelimit"
 import type { Install } from "./store"
 
 export class BadRequest extends Error {}
 
+export const AUTH_FAIL_LIMIT = 30 // lượt xác thực sai / phút / IP
+export const INSTALL_LIMIT = 300 // lượt / phút / bản cài
+
 export async function installRoute(req: Request, event: string, fn: (install: Install) => Promise<Response>, connectionId?: string): Promise<Response> {
+  // Theo IP chỉ đếm lượt xác thực SAI (chống dò khoá). Mọi bản cài trên cùng nền tảng có thể ra cùng một IP, nên lượt
+  // đúng giới hạn theo từng bản cài — bản cài này không làm bản cài kia bị 429 (review 22/10, điểm 4).
   const ip = clientIp(req)
-  const rl = hit(`install-auth:${ip}`, 60, 60_000)
-  if (!rl.ok) return jsonError(429, "rate_limited", undefined, { "Retry-After": String(rl.retryAfterSec) })
+  const blocked = isOver(`auth-fail:${ip}`, AUTH_FAIL_LIMIT)
+  if (blocked.over) return jsonError(429, "rate_limited", undefined, { "Retry-After": String(blocked.retryAfterSec) })
 
   const auth = authInstall(req)
   if ("response" in auth) {
+    if (auth.response.status === 401) hit(`auth-fail:${ip}`, AUTH_FAIL_LIMIT, 60_000)
     await audit({ event, ok: false, ip, connectionId, reason: `auth_${auth.response.status}` })
     return auth.response
   }
   const installId = auth.install.id
+  const rl = hit(`install:${installId}`, INSTALL_LIMIT, 60_000)
+  if (!rl.ok) return jsonError(429, "rate_limited", undefined, { "Retry-After": String(rl.retryAfterSec) })
   try {
     const res = await fn(auth.install)
     await audit({ event, ok: res.ok, ip, installId, connectionId, reason: res.ok ? undefined : `http_${res.status}` })

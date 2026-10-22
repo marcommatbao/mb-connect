@@ -5,7 +5,8 @@
 import { googleClient, googleRedirectUri } from "../config"
 
 export const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
-const AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
+export const GOOGLE_AUTH_ORIGIN = "https://accounts.google.com"
+const AUTH_ENDPOINT = `${GOOGLE_AUTH_ORIGIN}/o/oauth2/v2/auth`
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 const REVOKE_ENDPOINT = "https://oauth2.googleapis.com/revoke"
 const TIMEOUT_MS = 10_000
@@ -53,16 +54,17 @@ async function postForm(url: string, body: Record<string, string>): Promise<{ st
   return { status: res.status, data }
 }
 
-/** Đổi code lấy refresh token. Khách bỏ tích quyền Google Ads trên màn hình đồng ý → scope_denied. */
+/**
+ * Đổi code lấy refresh token. Khách bỏ tích quyền Google Ads trên màn hình đồng ý → scope_denied.
+ * KHÔNG gọi revoke ở đây: Google thu hồi theo cả lượt cấp quyền (tài khoản Google × client), nên revoke token vừa nhận
+ * sẽ giết luôn kết nối Google Ads đang chạy của cùng tài khoản đó (review 22/10, điểm 2). Token không được lưu là đủ.
+ */
 export async function exchangeGoogleCode(code: string): Promise<{ refreshToken: string; accessToken: string; expiresIn: number; scopes: string[] }> {
   const { clientId, clientSecret, redirectUri } = requireConfig()
   const { data } = await postForm(TOKEN_ENDPOINT, { code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: "authorization_code" })
   if (typeof data.error === "string") throw new GoogleOAuthError(data.error, String(data.error_description ?? data.error))
   const scopes = String(data.scope ?? "").split(/\s+/).filter(Boolean)
-  if (!scopes.includes(GOOGLE_ADS_SCOPE)) {
-    if (typeof data.access_token === "string") await revokeGoogleToken(data.access_token)
-    throw new GoogleOAuthError("scope_denied", "Khách chưa cấp quyền Google Ads")
-  }
+  if (!scopes.includes(GOOGLE_ADS_SCOPE)) throw new GoogleOAuthError("scope_denied", "Khách chưa cấp quyền Google Ads")
   if (typeof data.refresh_token !== "string" || typeof data.access_token !== "string") {
     throw new GoogleOAuthError("no_refresh_token", "Google không trả refresh token")
   }
@@ -78,7 +80,11 @@ export async function refreshGoogleAccessToken(refreshToken: string): Promise<{ 
   return { accessToken: data.access_token, expiresIn: Number(data.expires_in) || 3600 }
 }
 
-/** Thu hồi ở Google. Không ném lỗi: thất bại chỉ ghi log (token đã xoá phía cổng vẫn là xoá). */
+/**
+ * Thu hồi ở Google. Không ném lỗi: thất bại chỉ ghi log (token đã xoá phía cổng vẫn là xoá).
+ * Google gỡ CẢ quyền của tài khoản Google đó với client Mắt Bão → mọi kết nối khác dùng cùng tài khoản Google (kể cả ở
+ * bản cài khác) cũng chết và phải kết nối lại. Chỉ gọi khi người dùng chủ động ngắt hoặc Mắt Bão thu hồi bản cài.
+ */
 export async function revokeGoogleToken(token: string): Promise<boolean> {
   try {
     const { status } = await postForm(REVOKE_ENDPOINT, { token })

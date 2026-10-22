@@ -105,10 +105,22 @@ describe("xác thực bản cài", () => {
     }
   })
 
-  it("giới hạn 60 lượt/phút/IP", async () => {
+  it("theo IP chỉ đếm lượt xác thực SAI: quá 30 lượt sai/phút → 429, kể cả với khoá đúng", async () => {
+    const { key } = await createInstall({ name: "A", appUrl: "https://a.example.com" })
     let last = 0
-    for (let i = 0; i < 61; i++) last = (await v1Install.GET(req("/api/v1/install", { token: "garbage", ip: "10.9.9.9" }))).status
+    for (let i = 0; i < 32; i++) last = (await v1Install.GET(req("/api/v1/install", { token: "garbage", ip: "10.9.9.9" }))).status
     expect(last).toBe(429)
+    expect((await v1Install.GET(req("/api/v1/install", { token: key, ip: "10.9.9.9" }))).status).toBe(429)
+    expect((await v1Install.GET(req("/api/v1/install", { token: key, ip: "10.9.9.10" }))).status).toBe(200)
+  })
+
+  it("lượt đúng giới hạn theo bản cài: A dùng hết hạn mức thì B cùng IP vẫn chạy", async () => {
+    const a = await createInstall({ name: "A", appUrl: "https://a.example.com" })
+    const b = await createInstall({ name: "B", appUrl: "https://b.example.com" })
+    let last = 0
+    for (let i = 0; i < 301; i++) last = (await v1Install.GET(req("/api/v1/install", { token: a.key, ip: "10.5.5.5" }))).status
+    expect(last).toBe(429)
+    expect((await v1Install.GET(req("/api/v1/install", { token: b.key, ip: "10.5.5.5" }))).status).toBe(200)
   })
 })
 
@@ -141,6 +153,13 @@ describe("xác thực quản trị", () => {
     process.env.GATEWAY_ADMIN_CIDRS = "any"
     expect((await list({ token: ADMIN_TOKEN, ip: "203.0.113.5" })).status).toBe(200)
     expect((await list({ ip: "203.0.113.5" })).status).toBe(401)
+  })
+
+  it("không có X-Forwarded-For / ít mục hơn số tầng proxy → IP không rõ → từ chối; X-Real-IP bị bỏ qua", async () => {
+    const noXff = new Request("https://mb-connect.test/api/admin/installs", { headers: { authorization: `Bearer ${ADMIN_TOKEN}`, "x-real-ip": "10.0.0.1" } })
+    expect((await installsRoute.GET(noXff)).status).toBe(403)
+    process.env.TRUSTED_PROXY_HOPS = "2"
+    expect((await list({ token: ADMIN_TOKEN, ip: "10.0.0.1" })).status).toBe(403)
   })
 
   it("TRUSTED_PROXY_HOPS=2: lấy mục thứ 2 từ cuối (IP giả ở đầu không qua được)", async () => {

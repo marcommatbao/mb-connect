@@ -1,13 +1,15 @@
 // Trang trung gian trước khi sang Google (mini-spec GATEWAY-CONNECT-1 mục 12, điểm A):
 // GET  → hiện "đang kết nối vào bản cài ‹tên› (‹tên miền›) do ‹email› bắt đầu", nút Tiếp tục / Huỷ (form POST).
-// POST → Tiếp tục: đặt cookie state trên miền cổng rồi chuyển sang Google; Huỷ: tiêu lượt, về bản cài với reason=cancelled.
+// POST → Tiếp tục: tiêu đường dẫn, sinh state MỚI, đặt cookie riêng cho lượt này rồi sang Google; Huỷ: về bản cài.
 // Dùng POST để công cụ xem trước đường dẫn (chat, email) không tự kích hoạt lượt kết nối.
+// Trang này có CSP riêng (đã loại khỏi CSP chung ở next.config.ts): form-action phải cho phép Google + bản cài, vì
+// Chrome áp form-action cả cho bước chuyển hướng sau khi gửi form (review 22/10, điểm 1).
 import { audit } from "@/lib/audit"
 import { clientIp } from "@/lib/http"
 import { errorPage, esc, htmlPage } from "@/lib/html"
 import { redirectToInstall, stateCookie } from "@/lib/oauth-flow"
-import { consumeFlow, peekFlow } from "@/lib/pending"
-import { GoogleOAuthError, googleAuthUrl } from "@/lib/providers/google"
+import { beginOAuth, cancelLink, peekLink, type PendingFlow } from "@/lib/pending"
+import { GoogleOAuthError, GOOGLE_AUTH_ORIGIN, googleAuthUrl } from "@/lib/providers/google"
 import { getInstall } from "@/lib/store"
 
 export const dynamic = "force-dynamic"
@@ -15,11 +17,16 @@ export const dynamic = "force-dynamic"
 const EXPIRED = "Đường dẫn kết nối đã hết hạn hoặc đã dùng."
 const PROVIDER_LABEL = { google: "Google Ads", meta: "Facebook" } as const
 
-export async function GET(_req: Request, { params }: { params: Promise<{ state: string }> }) {
-  const { state } = await params
-  const flow = peekFlow(state)
+function activeInstall(flow: PendingFlow | null) {
   const install = flow ? getInstall(flow.installId) : null
-  if (!flow || !install || install.status !== "active") return errorPage(EXPIRED, 410)
+  return install && install.status === "active" ? install : null
+}
+
+export async function GET(_req: Request, { params }: { params: Promise<{ link: string }> }) {
+  const { link } = await params
+  const flow = peekLink(link)
+  const install = activeInstall(flow)
+  if (!flow || !install) return errorPage(EXPIRED, 410)
 
   const label = PROVIDER_LABEL[flow.provider]
   return htmlPage(`Kết nối ${label}`, `
@@ -37,33 +44,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ state: 
     <button type="submit" name="action" value="cancel">Huỷ</button>
   </div>
 </form>
-<p class="muted">Cổng kết nối Mắt Bão — Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`)
+<p class="muted">Cổng kết nối Mắt Bão — Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`,
+    200, { formAction: [GOOGLE_AUTH_ORIGIN, install.appUrl] })
 }
 
-export async function POST(req: Request, { params }: { params: Promise<{ state: string }> }) {
-  const { state } = await params
+export async function POST(req: Request, { params }: { params: Promise<{ link: string }> }) {
+  const { link } = await params
   const ip = clientIp(req)
   let action = "continue"
   try {
     action = String((await req.formData()).get("action") ?? "continue")
   } catch { /* thân rỗng = tiếp tục */ }
 
-  const flow = peekFlow(state)
-  const install = flow ? getInstall(flow.installId) : null
-  if (!flow || !install || install.status !== "active") return errorPage(EXPIRED, 410)
+  if (!activeInstall(peekLink(link))) return errorPage(EXPIRED, 410)
 
   if (action === "cancel") {
-    consumeFlow(state)
+    const flow = cancelLink(link)
+    if (!flow) return errorPage(EXPIRED, 410)
     await audit({ event: "oauth.start", ok: false, ip, installId: flow.installId, provider: flow.provider, reason: "cancelled" })
     return redirectToInstall(flow, { ok: false, reason: "cancelled" })
   }
 
+  const begun = beginOAuth(link)
+  if (!begun) return errorPage(EXPIRED, 410)
+  const { flow, oauthState } = begun
   try {
-    const url = googleAuthUrl(state)
+    const url = googleAuthUrl(oauthState)
     await audit({ event: "oauth.start", ok: true, ip, installId: flow.installId, provider: flow.provider })
-    return new Response(null, { status: 303, headers: { Location: url, "Set-Cookie": stateCookie(state), "Cache-Control": "no-store" } })
+    return new Response(null, { status: 303, headers: { Location: url, "Set-Cookie": stateCookie(oauthState), "Cache-Control": "no-store" } })
   } catch (e) {
-    consumeFlow(state)
     const reason = e instanceof GoogleOAuthError && e.reason === "misconfigured" ? "misconfigured" : "provider_error"
     await audit({ event: "oauth.start", ok: false, ip, installId: flow.installId, provider: flow.provider, reason })
     return redirectToInstall(flow, { ok: false, reason })

@@ -30,7 +30,8 @@ const nextConfig: NextConfig = {
   turbopack: { root: __dirname },
   poweredByHeader: false,
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }]
+    // Trang trung gian /api/oauth/start/* tự gắn CSP riêng (lib/html.ts): form-action phải cho Google + bản cài.
+    return [{ source: "/((?!api/oauth/start/).*)", headers: securityHeaders }]
   },
 }
 

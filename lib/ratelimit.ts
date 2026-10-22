@@ -14,6 +14,13 @@ export function hit(key: string, limit: number, windowMs: number, now = Date.now
   return { ok: b.count <= limit, retryAfterSec: Math.max(1, Math.ceil((b.resetAt - now) / 1000)) }
 }
 
+/** Chỉ xem đã vượt chưa, không đếm thêm (để chặn trước khi xác thực mà không tính lượt hợp lệ). */
+export function isOver(key: string, limit: number, now = Date.now()): { over: boolean; retryAfterSec: number } {
+  const b = buckets.get(key)
+  if (!b || b.resetAt <= now) return { over: false, retryAfterSec: 0 }
+  return { over: b.count > limit, retryAfterSec: Math.max(1, Math.ceil((b.resetAt - now) / 1000)) }
+}
+
 export function resetRateLimitsForTests(): void {
   buckets.clear()
 }

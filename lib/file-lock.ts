@@ -16,13 +16,15 @@ export async function withFileLock<T>(key: string, fn: () => Promise<T>): Promis
 
   let resolve!: () => void;
   const slot = new Promise<void>((r) => { resolve = r; });
-  queue.set(key, prev.then(() => slot));
+  // Lưu đúng promise đã đặt vào map để so lúc dọn (bản AdsCommand so với `slot` nên không bao giờ xoá khoá — review 22/10, điểm 10).
+  const tail = prev.then(() => slot);
+  queue.set(key, tail);
 
   await prev;
   try {
     return await fn();
   } finally {
     resolve();
-    if (queue.get(key) === slot) queue.delete(key);
+    if (queue.get(key) === tail) queue.delete(key);
   }
 }

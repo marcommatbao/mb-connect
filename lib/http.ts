@@ -18,15 +18,15 @@ export function json(body: unknown, status = 200): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } })
 }
 
-/** Cùng quy tắc với AdsCommand lib/rate-limit.ts getClientIp: IP thật là mục thứ TRUSTED_PROXY_HOPS tính từ cuối X-Forwarded-For. */
+/**
+ * IP thật = mục thứ TRUSTED_PROXY_HOPS tính từ cuối X-Forwarded-For (mỗi proxy tin cậy nối thêm một mục).
+ * Ít mục hơn số tầng proxy, hoặc không có header → "unknown" (khác AdsCommand: ở đây IP dùng cho danh sách quản trị nên
+ * phải đóng khi không chắc). Không đọc X-Real-IP: khách tự đặt được (review 22/10, điểm 5).
+ */
 export function clientIp(req: Request): string {
-  const xff = req.headers.get("x-forwarded-for")
-  if (xff) {
-    const parts = xff.split(",").map((p) => p.trim()).filter(Boolean)
-    const hops = Math.max(1, Math.min(5, Number(process.env.TRUSTED_PROXY_HOPS) || 1))
-    if (parts.length > 0) return parts[Math.max(0, parts.length - hops)]
-  }
-  return req.headers.get("x-real-ip")?.trim() || "unknown"
+  const parts = (req.headers.get("x-forwarded-for") ?? "").split(",").map((p) => p.trim()).filter(Boolean)
+  const hops = Math.max(1, Math.min(5, Number(process.env.TRUSTED_PROXY_HOPS) || 1))
+  return parts.length >= hops ? parts[parts.length - hops] : "unknown"
 }
 
 function bearer(req: Request): string | null {
