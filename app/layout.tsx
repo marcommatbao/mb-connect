@@ -22,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <nav>
               <Link href="/about">About</Link>
               <Link href="/privacy">Privacy Policy</Link>
+              <Link href="/terms">Terms of Service</Link>
               <Link href="/data-deletion">Data deletion</Link>
             </nav>
           </div>

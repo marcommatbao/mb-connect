@@ -37,7 +37,7 @@ export default function PrivacyPage() {
         clicks and conversions.</p>
       <p><strong>Meta (Facebook) Ads</strong>, through Facebook Login for Business (permissions <code>ads_read</code>,{" "}
         <code>ads_management</code>, <code>business_management</code>, <code>pages_show_list</code>,{" "}
-        <code>pages_read_engagement</code>): the business, ad accounts, pixels and Pages the customer chooses to share,
+        <code>pages_read_engagement</code>, <code>pages_manage_ads</code>): the business, ad accounts, pixels and Pages the customer chooses to share,
         and their campaigns, ad sets, ads, creatives and performance insights.</p>
       <p><strong>Account data</strong>: the name, work email address and role of each user of a customer&apos;s workspace,
         and a log of the actions they take in the app.</p>
