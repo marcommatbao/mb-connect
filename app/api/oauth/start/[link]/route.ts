@@ -30,22 +30,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ link: s
   if (!flow || !install) return errorPage(EXPIRED, 410)
 
   const label = PROVIDER_LABEL[flow.provider]
+  const mark = flow.provider === "meta" ? `<span class="logo meta" aria-hidden="true">f</span>` : `<span class="logo google" aria-hidden="true">G</span>`
   return htmlPage(`Kết nối ${label}`, `
+<div class="pair">${mark}<span class="link" aria-hidden="true">⇄</span><span class="logo mb" aria-hidden="true">M</span></div>
 <h1>Kết nối ${esc(label)} vào AdsCommand</h1>
-<p>Bạn sắp cho phép bản AdsCommand dưới đây truy cập tài khoản ${esc(label)} của bạn:</p>
+<p class="lead">Bạn sắp cho phép bản AdsCommand dưới đây truy cập tài khoản ${esc(label)} của bạn.</p>
+<ol class="steps">
+  <li class="on"><b>1</b><span>Xác nhận</span></li>
+  <li><b>2</b><span>${esc(label)}</span></li>
+  <li><b>3</b><span>Chọn tài khoản</span></li>
+</ol>
 <dl>
-  <dt>Bản cài</dt><dd>${esc(install.name)}</dd>
-  <dt>Địa chỉ</dt><dd>${esc(new URL(install.appUrl).host)}</dd>
-  <dt>Người bắt đầu</dt><dd>${esc(flow.createdBy)}</dd>
+  <div><dt>Bản cài</dt><dd>${esc(install.name)}</dd></div>
+  <div><dt>Địa chỉ</dt><dd>${esc(new URL(install.appUrl).host)}</dd></div>
+  <div><dt>Người bắt đầu</dt><dd>${esc(flow.createdBy)}</dd></div>
 </dl>
 <p class="warn">Chỉ tiếp tục nếu đây là AdsCommand của chính doanh nghiệp bạn. Nếu ai đó gửi đường dẫn này cho bạn mà bạn không biết bản cài trên, hãy bấm Huỷ.</p>
 <form method="post">
   <div class="row">
-    <button class="primary" type="submit" name="action" value="continue">Tiếp tục tới ${esc(label)}</button>
+    <button class="primary${flow.provider === "meta" ? " meta" : ""}" type="submit" name="action" value="continue">Tiếp tục tới ${esc(label)}</button>
     <button type="submit" name="action" value="cancel">Huỷ</button>
   </div>
 </form>
-<p class="muted">Cổng kết nối Mắt Bão — Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`,
+<p class="muted">Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`,
     200, { formAction: [...(flow.provider === "meta" ? META_AUTH_ORIGINS : [GOOGLE_AUTH_ORIGIN]), install.appUrl] })
 }
 
