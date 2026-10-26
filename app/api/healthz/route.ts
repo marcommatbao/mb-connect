@@ -3,6 +3,7 @@
 import { promises as fsp } from "fs"
 import crypto from "crypto"
 import { assertEncryptionKeyConfigured } from "@/lib/crypto"
+import { googleClient, metaApp } from "@/lib/config"
 import { dataDir, dataPath } from "@/lib/data-dir"
 import { json } from "@/lib/http"
 import pkg from "@/package.json"
@@ -30,5 +31,5 @@ export async function GET() {
   }
   const writable = await storeWritable()
   const ok = writable && encryptionKey
-  return json({ ok, version: pkg.version, checks: { storeWritable: writable, encryptionKey }, time: new Date().toISOString() }, ok ? 200 : 503)
+  return json({ ok, version: pkg.version, checks: { storeWritable: writable, encryptionKey }, providers: { google: !!googleClient(), meta: !!metaApp() }, time: new Date().toISOString() }, ok ? 200 : 503)
 }

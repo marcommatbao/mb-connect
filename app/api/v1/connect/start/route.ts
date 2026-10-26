@@ -1,7 +1,7 @@
 // POST /api/v1/connect/start — bản cài mở một lượt kết nối.
 // { provider, returnPath, createdBy, nonceHash } → { url } (trình duyệt khách mở url này: trang trung gian của cổng).
 // returnUrl = appUrl đã đăng ký + một trong các đường cố định — không bao giờ nhận URL tuỳ ý (chặn chuyển hướng sai chỗ).
-import { gatewayUrl, googleClient } from "@/lib/config"
+import { gatewayUrl, googleClient, metaApp } from "@/lib/config"
 import { sweepExpiredPending } from "@/lib/connections"
 import { json, jsonError } from "@/lib/http"
 import { BadRequest, installRoute, jsonBody } from "@/lib/install-route"
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   return installRoute(req, "v1.connect.start", async (install) => {
     const body = await jsonBody(req)
     const provider = body.provider
-    if (provider !== "google") throw new BadRequest(provider === "meta" ? "Meta chưa hỗ trợ ở bản này" : "provider phải là google")
+    if (provider !== "google" && provider !== "meta") throw new BadRequest("provider phải là google hoặc meta")
     if (body.returnPath !== RETURN_PATHS[provider]) throw new BadRequest(`returnPath phải là ${RETURN_PATHS[provider]}`)
     const createdBy = String(body.createdBy ?? "").trim()
     if (!/^[^\s@]{1,100}@[^\s@]{1,100}$/.test(createdBy)) throw new BadRequest("createdBy phải là email người bấm kết nối")
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     if (!/^[0-9a-f]{64}$/.test(nonceHash)) throw new BadRequest("nonceHash phải là SHA-256 hex")
 
     const base = gatewayUrl()
-    if (!base || !googleClient()) return jsonError(503, "misconfigured")
+    if (!base || !(provider === "google" ? googleClient() : metaApp())) return jsonError(503, "misconfigured")
 
     const rl = hit(`connect-start:${install.id}`, 20, 60 * 60_000)
     if (!rl.ok) return jsonError(429, "rate_limited", undefined, { "Retry-After": String(rl.retryAfterSec) })

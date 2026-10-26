@@ -10,6 +10,7 @@ import { errorPage, esc, htmlPage } from "@/lib/html"
 import { redirectToInstall, stateCookie } from "@/lib/oauth-flow"
 import { beginOAuth, cancelLink, peekLink, type PendingFlow } from "@/lib/pending"
 import { GoogleOAuthError, GOOGLE_AUTH_ORIGIN, googleAuthUrl } from "@/lib/providers/google"
+import { META_AUTH_ORIGINS, MetaOAuthError, metaAuthUrl } from "@/lib/providers/meta"
 import { getInstall } from "@/lib/store"
 
 export const dynamic = "force-dynamic"
@@ -45,7 +46,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ link: s
   </div>
 </form>
 <p class="muted">Cổng kết nối Mắt Bão — Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`,
-    200, { formAction: [GOOGLE_AUTH_ORIGIN, install.appUrl] })
+    200, { formAction: [...(flow.provider === "meta" ? META_AUTH_ORIGINS : [GOOGLE_AUTH_ORIGIN]), install.appUrl] })
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ link: string }> }) {
@@ -69,11 +70,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ link: s
   if (!begun) return errorPage(EXPIRED, 410)
   const { flow, oauthState } = begun
   try {
-    const url = googleAuthUrl(oauthState)
+    const url = flow.provider === "meta" ? metaAuthUrl(oauthState) : googleAuthUrl(oauthState)
     await audit({ event: "oauth.start", ok: true, ip, installId: flow.installId, provider: flow.provider })
     return new Response(null, { status: 303, headers: { Location: url, "Set-Cookie": stateCookie(oauthState), "Cache-Control": "no-store" } })
   } catch (e) {
-    const reason = e instanceof GoogleOAuthError && e.reason === "misconfigured" ? "misconfigured" : "provider_error"
+    const reason = (e instanceof GoogleOAuthError || e instanceof MetaOAuthError) && e.reason === "misconfigured" ? "misconfigured" : "provider_error"
     await audit({ event: "oauth.start", ok: false, ip, installId: flow.installId, provider: flow.provider, reason })
     return redirectToInstall(flow, { ok: false, reason })
   }

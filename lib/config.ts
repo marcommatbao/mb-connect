@@ -25,3 +25,17 @@ export function googleRedirectUri(): string | null {
 export function secureCookies(): boolean {
   return (gatewayUrl() ?? "https:").startsWith("https:")
 }
+
+/** Ứng dụng Meta "Mắt Bão Marketing": app id + secret + ID cấu hình Facebook Login for Business (mã truy cập người dùng hệ thống). */
+export function metaApp(): { appId: string; appSecret: string; configId: string; version: string } | null {
+  const appId = process.env.META_APP_ID?.trim()
+  const appSecret = process.env.META_APP_SECRET?.trim()
+  const configId = process.env.META_LOGIN_CONFIG_ID?.trim()
+  const version = (process.env.META_GRAPH_API_VERSION?.trim() || "v26.0").replace(/^(?!v)/, "v")
+  return appId && appSecret && configId ? { appId, appSecret, configId, version } : null
+}
+
+export function metaRedirectUri(): string | null {
+  const g = gatewayUrl()
+  return g ? `${g}/api/oauth/meta/callback` : null
+}

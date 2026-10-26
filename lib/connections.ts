@@ -5,12 +5,15 @@
 // Cấp access token cho bản cài; cache theo kết nối, làm mới trước hạn 60 giây, một lượt làm mới cho nhiều lượt gọi cùng lúc.
 // ============================================================
 import crypto from "crypto"
-import { decryptField, encryptField, safeEqualHex, sha256Hex } from "./crypto"
+import { decryptField, encryptField, safeEqualHex, sha256Hex, type EncryptedField } from "./crypto"
 import { GoogleOAuthError, refreshGoogleAccessToken, revokeGoogleToken } from "./providers/google"
+import { inspectMetaToken, revokeMetaToken } from "./providers/meta"
 import { listConnections, listInstalls, mutateConnections, type Connection, type Provider } from "./store"
 
 export const PENDING_CONFIRM_MS = 15 * 60 * 1000
 const REFRESH_EARLY_MS = 60_000
+/** Token Meta không hết hạn: cấp kèm hạn 1 giờ để bản cài xin lại định kỳ — mỗi lần xin lại cổng hỏi Meta token còn sống không. */
+const META_RECHECK_MS = 60 * 60_000
 
 export class ConnectionError extends Error {
   constructor(public code: "not_found" | "bad_request" | "connection_missing" | "provider_error", message: string) {
@@ -20,11 +23,11 @@ export class ConnectionError extends Error {
 
 async function revokeAtProvider(provider: Provider, secret: string): Promise<void> {
   if (provider === "google") await revokeGoogleToken(secret)
-  // Meta: thêm ở bước 5 (mini-spec GATEWAY-CONNECT-1).
+  else await revokeMetaToken(secret)
 }
 
 export async function createPendingConnection(input: {
-  installId: string; provider: Provider; createdBy: string; scopes: string[]; secret: string; nonceHash: string
+  installId: string; provider: Provider; createdBy: string; scopes: string[]; secret: string; nonceHash: string; metaUserId?: string
 }): Promise<Connection> {
   const now = Date.now()
   const conn: Connection = {
@@ -38,6 +41,7 @@ export async function createPendingConnection(input: {
     secret: encryptField(input.secret),
     nonceHash: input.nonceHash,
     pendingExpiresAt: new Date(now + PENDING_CONFIRM_MS).toISOString(),
+    ...(input.metaUserId ? { metaUserId: input.metaUserId } : {}),
   }
   await mutateConnections((list) => { list.push(conn) })
   return conn
@@ -143,6 +147,24 @@ export async function revokeAllOfInstall(installId: string): Promise<number> {
   return n
 }
 
+/**
+ * Meta báo khách đã gỡ ứng dụng / xin xoá dữ liệu (signed_request đã kiểm chữ ký): xoá token mọi kết nối của người dùng Meta đó.
+ * Không gọi Meta thu hồi — quyền đã bị gỡ ở phía Meta.
+ */
+export async function revokeMetaUser(metaUserId: string): Promise<number> {
+  return mutateConnections((list) => {
+    let count = 0
+    const iso = new Date().toISOString()
+    for (const c of list) {
+      if (c.provider === "meta" && c.metaUserId === metaUserId && c.status !== "revoked") {
+        stripAndRevoke(c, iso)
+        count++
+      }
+    }
+    return count
+  })
+}
+
 // ── Cấp token ──────────────────────────────────────────────────────────────
 
 const tokenCache = new Map<string, { accessToken: string; expiresAt: number }>()
@@ -173,12 +195,10 @@ export async function issueAccessToken(installId: string, connectionId: string, 
   const cached = tokenCache.get(c.id)
   if (cached && cached.expiresAt - REFRESH_EARLY_MS > now) return { ...cached, provider: c.provider }
 
-  if (c.provider !== "google") throw new ConnectionError("provider_error", "nhà cung cấp chưa hỗ trợ ở bản này")
-
   let p = inflight.get(c.id)
   if (!p) {
     const secret = c.secret
-    p = (async () => {
+    p = (c.provider === "meta" ? metaIssue(c.id, secret) : (async () => {
       try {
         const r = await refreshGoogleAccessToken(decryptField(secret))
         // Trong lúc chờ Google, kết nối có thể đã bị ngắt / thay → không cấp, không cache (review 22/10, điểm 7).
@@ -198,8 +218,32 @@ export async function issueAccessToken(installId: string, connectionId: string, 
       } finally {
         inflight.delete(c.id)
       }
-    })()
+    })())
     inflight.set(c.id, p)
   }
   return { ...(await p), provider: c.provider }
+}
+
+/** Meta: token không đổi; hỏi Meta còn sống không (debug_token). Chết → kết nối chết, bản cài báo "kết nối lại". */
+async function metaIssue(connectionId: string, secret: EncryptedField): Promise<{ accessToken: string; expiresAt: number }> {
+  try {
+    const token = decryptField(secret)
+    const info = await inspectMetaToken(token)
+    if (!info.valid || !info.scopes.includes("ads_management")) {
+      await markDead(connectionId)
+      throw new ConnectionError("connection_missing", "khách đã gỡ quyền ở Meta — cần kết nối lại")
+    }
+    const still = listConnections().find((x) => x.id === connectionId)
+    if (!still || still.status !== "active") throw new ConnectionError("connection_missing", "kết nối vừa bị ngắt")
+    const now = Date.now()
+    const hardExpiry = info.expiresAt > 0 ? info.expiresAt * 1000 : Infinity
+    const entry = { accessToken: token, expiresAt: Math.min(now + META_RECHECK_MS, hardExpiry) }
+    tokenCache.set(connectionId, entry)
+    return entry
+  } catch (e) {
+    if (e instanceof ConnectionError) throw e
+    throw new ConnectionError("provider_error", e instanceof Error ? e.message : "lỗi Meta")
+  } finally {
+    inflight.delete(connectionId)
+  }
 }
