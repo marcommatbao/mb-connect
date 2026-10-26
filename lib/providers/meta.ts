@@ -77,7 +77,11 @@ export async function inspectMetaToken(token: string): Promise<MetaTokenInfo> {
     userId: String(d.user_id ?? ""),
     type: String(d.type ?? ""),
     expiresAt: Number(d.expires_at ?? 0) || 0,
-    scopes: Array.isArray(d.scopes) ? d.scopes.map(String) : [],
+    // Token người dùng hệ thống doanh nghiệp: quyền có thể chỉ nằm trong granular_scopes (theo từng tài sản) — gộp cả hai.
+    scopes: [...new Set([
+      ...(Array.isArray(d.scopes) ? d.scopes.map(String) : []),
+      ...(Array.isArray(d.granular_scopes) ? d.granular_scopes.map((g) => String((g as { scope?: unknown })?.scope ?? "")).filter(Boolean) : []),
+    ])],
   }
 }
 
@@ -94,7 +98,11 @@ export async function exchangeMetaCode(code: string): Promise<{ token: string; u
   if (typeof data.access_token !== "string") throw new MetaOAuthError("provider_error", "Meta không trả access token")
   const info = await inspectMetaToken(data.access_token)
   if (!info.valid || info.appId !== appId) throw new MetaOAuthError("provider_error", "Token Meta không hợp lệ cho ứng dụng này")
-  if (!info.scopes.includes(META_REQUIRED_SCOPE)) throw new MetaOAuthError("scope_denied", "Khách chưa cấp quyền quản lý quảng cáo")
+  if (!info.scopes.includes(META_REQUIRED_SCOPE)) {
+    // Ghi đúng cái Meta trả (KHÔNG ghi token) để chẩn đoán — lần chạy thật đầu tiên 26/10 rơi vào nhánh này.
+    console.warn(`[meta.exchange] thiếu ${META_REQUIRED_SCOPE}: type=${info.type} scopes=${JSON.stringify(info.scopes)}`)
+    throw new MetaOAuthError("scope_denied", "Khách chưa cấp quyền quản lý quảng cáo")
+  }
   return { token: data.access_token, userId: info.userId, scopes: info.scopes, expiresAt: info.expiresAt }
 }
 

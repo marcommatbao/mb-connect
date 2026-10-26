@@ -114,6 +114,15 @@ describe("Meta: kết nối", () => {
     expect(listConnections()).toHaveLength(0)
   })
 
+  it("quyền chỉ nằm trong granular_scopes (token người dùng hệ thống) → vẫn nhận", async () => {
+    const { key } = await createInstall({ name: "A", appUrl: APP })
+    debug.scopes = []
+    debug.granular_scopes = [{ scope: "ads_management", target_ids: ["111"] }, { scope: "business_management" }]
+    const f = await flow(key)
+    expect(f.back.searchParams.get("ok")).toBe("1")
+    expect(listConnections()[0].scopes).toEqual(["ads_management", "business_management"])
+  })
+
   it("token của app khác → provider_error, không lưu", async () => {
     const { key } = await createInstall({ name: "A", appUrl: APP })
     debug.app_id = "999"
