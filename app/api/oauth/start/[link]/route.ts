@@ -12,10 +12,10 @@ import { beginOAuth, cancelLink, peekLink, type PendingFlow } from "@/lib/pendin
 import { GoogleOAuthError, GOOGLE_AUTH_ORIGIN, googleAuthUrl } from "@/lib/providers/google"
 import { META_AUTH_ORIGINS, MetaOAuthError, metaAuthUrl } from "@/lib/providers/meta"
 import { getInstall } from "@/lib/store"
+import { fill, langFromRequest, strings, type Lang } from "@/lib/i18n"
 
 export const dynamic = "force-dynamic"
 
-const EXPIRED = "Đường dẫn kết nối đã hết hạn hoặc đã dùng."
 const PROVIDER_LABEL = { google: "Google Ads", meta: "Facebook" } as const
 
 function activeInstall(flow: PendingFlow | null) {
@@ -23,37 +23,43 @@ function activeInstall(flow: PendingFlow | null) {
   return install && install.status === "active" ? install : null
 }
 
-export async function GET(_req: Request, { params }: { params: Promise<{ link: string }> }) {
+/** Ngôn ngữ trang: theo lượt kết nối (nút VI/EN ở bản cài) → Accept-Language. */
+const pageLang = (req: Request, flow: PendingFlow | null): Lang => flow?.lang ?? langFromRequest(req)
+
+export async function GET(req: Request, { params }: { params: Promise<{ link: string }> }) {
   const { link } = await params
   const flow = peekLink(link)
   const install = activeInstall(flow)
-  if (!flow || !install) return errorPage(EXPIRED, 410)
+  const lang = pageLang(req, flow)
+  const S = strings(lang)
+  if (!flow || !install) return errorPage(S.expired, 410, lang)
 
   const label = PROVIDER_LABEL[flow.provider]
+  const v = { label }
   const mark = flow.provider === "meta" ? `<span class="logo meta" aria-hidden="true">f</span>` : `<span class="logo google" aria-hidden="true">G</span>`
-  return htmlPage(`Kết nối ${label}`, `
+  return htmlPage(fill(S.pageTitle, v), `
 <div class="pair">${mark}<span class="link" aria-hidden="true">⇄</span><span class="logo mb" aria-hidden="true">M</span></div>
-<h1>Kết nối ${esc(label)} vào AdsCommand</h1>
-<p class="lead">Bạn sắp cho phép bản AdsCommand dưới đây truy cập tài khoản ${esc(label)} của bạn.</p>
+<h1>${esc(fill(S.heading, v))}</h1>
+<p class="lead">${esc(fill(S.lead, v))}</p>
 <ol class="steps">
-  <li class="on"><b>1</b><span>Xác nhận</span></li>
+  <li class="on"><b>1</b><span>${esc(S.stepConfirm)}</span></li>
   <li><b>2</b><span>${esc(label)}</span></li>
-  <li><b>3</b><span>Chọn tài khoản</span></li>
+  <li><b>3</b><span>${esc(S.stepChoose)}</span></li>
 </ol>
 <dl>
-  <div><dt>Bản cài</dt><dd>${esc(install.name)}</dd></div>
-  <div><dt>Địa chỉ</dt><dd>${esc(new URL(install.appUrl).host)}</dd></div>
-  <div><dt>Người bắt đầu</dt><dd>${esc(flow.createdBy)}</dd></div>
+  <div><dt>${esc(S.install)}</dt><dd>${esc(install.name)}</dd></div>
+  <div><dt>${esc(S.address)}</dt><dd>${esc(new URL(install.appUrl).host)}</dd></div>
+  <div><dt>${esc(S.startedBy)}</dt><dd>${esc(flow.createdBy)}</dd></div>
 </dl>
-<p class="warn">Chỉ tiếp tục nếu đây là AdsCommand của chính doanh nghiệp bạn. Nếu ai đó gửi đường dẫn này cho bạn mà bạn không biết bản cài trên, hãy bấm Huỷ.</p>
+<p class="warn">${esc(S.warn)}</p>
 <form method="post">
   <div class="row">
-    <button class="primary${flow.provider === "meta" ? " meta" : ""}" type="submit" name="action" value="continue">Tiếp tục tới ${esc(label)}</button>
-    <button type="submit" name="action" value="cancel">Huỷ</button>
+    <button class="primary${flow.provider === "meta" ? " meta" : ""}" type="submit" name="action" value="continue">${esc(fill(S.continue, v))}</button>
+    <button type="submit" name="action" value="cancel">${esc(S.cancel)}</button>
   </div>
 </form>
-<p class="muted">Mắt Bão giữ khoá ứng dụng; bản cài chỉ nhận quyền truy cập ngắn hạn vào đúng tài khoản bạn chọn.</p>`,
-    200, { formAction: [...(flow.provider === "meta" ? META_AUTH_ORIGINS : [GOOGLE_AUTH_ORIGIN]), install.appUrl] })
+<p class="muted">${esc(S.footer)}</p>`,
+    200, { formAction: [...(flow.provider === "meta" ? META_AUTH_ORIGINS : [GOOGLE_AUTH_ORIGIN]), install.appUrl], lang })
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ link: string }> }) {
@@ -64,20 +70,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ link: s
     action = String((await req.formData()).get("action") ?? "continue")
   } catch { /* thân rỗng = tiếp tục */ }
 
-  if (!activeInstall(peekLink(link))) return errorPage(EXPIRED, 410)
+  const lang = pageLang(req, peekLink(link))
+  const EXPIRED = strings(lang).expired
+  if (!activeInstall(peekLink(link))) return errorPage(EXPIRED, 410, lang)
 
   if (action === "cancel") {
     const flow = cancelLink(link)
-    if (!flow) return errorPage(EXPIRED, 410)
+    if (!flow) return errorPage(EXPIRED, 410, lang)
     await audit({ event: "oauth.start", ok: false, ip, installId: flow.installId, provider: flow.provider, reason: "cancelled" })
     return redirectToInstall(flow, { ok: false, reason: "cancelled" })
   }
 
   const begun = beginOAuth(link)
-  if (!begun) return errorPage(EXPIRED, 410)
+  if (!begun) return errorPage(EXPIRED, 410, lang)
   const { flow, oauthState } = begun
   try {
-    const url = flow.provider === "meta" ? metaAuthUrl(oauthState) : googleAuthUrl(oauthState)
+    const url = flow.provider === "meta" ? metaAuthUrl(oauthState) : googleAuthUrl(oauthState, flow.lang)
     await audit({ event: "oauth.start", ok: true, ip, installId: flow.installId, provider: flow.provider })
     return new Response(null, { status: 303, headers: { Location: url, "Set-Cookie": stateCookie(oauthState), "Cache-Control": "no-store" } })
   } catch (e) {

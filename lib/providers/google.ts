@@ -24,7 +24,8 @@ function requireConfig() {
   return { ...client, redirectUri }
 }
 
-export function googleAuthUrl(state: string): string {
+/** lang: ngôn ngữ người bấm ở bản cài → `hl` để màn chọn tài khoản / đồng ý của Google hiện đúng ngôn ngữ (video xác minh cần tiếng Anh). */
+export function googleAuthUrl(state: string, lang?: "vi" | "en"): string {
   const { clientId, redirectUri } = requireConfig()
   const q = new URLSearchParams({
     client_id: clientId,
@@ -37,6 +38,7 @@ export function googleAuthUrl(state: string): string {
     prompt: "consent select_account",
     state,
   })
+  if (lang) q.set("hl", lang)
   return `${AUTH_ENDPOINT}?${q}`
 }
 

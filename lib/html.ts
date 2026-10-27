@@ -1,6 +1,7 @@
 // Trang HTML nhỏ do route trả (trang trung gian, trang lỗi). Mọi giá trị động đi qua esc().
 // Các route /api/oauth/start/* KHÔNG nhận header bảo mật chung (next.config.ts) nên trang tự gắn đủ bộ ở đây,
 // với form-action riêng: hai CSP chồng nhau thì trình duyệt lấy phần GIAO, không nới được bằng header thứ hai.
+import { strings, type Lang } from "./i18n"
 export function esc(s: string): string {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!)
 }
@@ -47,17 +48,20 @@ function securityHeaders(formAction: string[]): Record<string, string> {
   }
 }
 
-export function htmlPage(title: string, body: string, status = 200, opts: { formAction?: string[] } = {}): Response {
-  const html = `<!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+export function htmlPage(title: string, body: string, status = 200, opts: { formAction?: string[]; lang?: Lang } = {}): Response {
+  const S = strings(opts.lang ?? "vi")
+  const html = `<!doctype html><html lang="${S.htmlLang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex"><title>${esc(title)}</title><style>${STYLE}</style></head><body><main class="wrap">
-<div class="brandbar"><span class="dot" aria-hidden="true"></span>Cổng kết nối Mắt Bão</div><div class="box">${body}</div></main></body></html>`
+<div class="brandbar"><span class="dot" aria-hidden="true"></span>${esc(S.brand)}</div><div class="box">${body}</div></main></body></html>`
   return new Response(html, {
     status,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", ...securityHeaders(opts.formAction ?? []) },
   })
 }
 
-export function errorPage(message: string, status = 400): Response {
-  return htmlPage("Không kết nối được", `<h1>Không kết nối được</h1><p class="lead">${esc(message)}</p>
-<p class="muted">Quay lại AdsCommand và bấm kết nối lại. Nếu vẫn lỗi, liên hệ Mắt Bão.</p>`, status)
+/** message: câu đã đúng ngôn ngữ (thường là strings(lang).expired). */
+export function errorPage(message: string, status = 400, lang: Lang = "vi"): Response {
+  const S = strings(lang)
+  return htmlPage(S.errorTitle, `<h1>${esc(S.errorTitle)}</h1><p class="lead">${esc(message)}</p>
+<p class="muted">${esc(S.errorHint)}</p>`, status, { lang })
 }

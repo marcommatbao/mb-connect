@@ -7,6 +7,7 @@ import { json, jsonError } from "@/lib/http"
 import { BadRequest, installRoute, jsonBody } from "@/lib/install-route"
 import { createFlow } from "@/lib/pending"
 import { hit } from "@/lib/ratelimit"
+import { isLang } from "@/lib/i18n"
 import type { Provider } from "@/lib/store"
 
 export const dynamic = "force-dynamic"
@@ -34,7 +35,8 @@ export async function POST(req: Request) {
     if (!rl.ok) return jsonError(429, "rate_limited", undefined, { "Retry-After": String(rl.retryAfterSec) })
 
     await sweepExpiredPending()
-    const state = createFlow({ installId: install.id, provider, returnUrl: install.appUrl + RETURN_PATHS[provider], createdBy, nonceHash })
+    const lang = isLang(body.lang) ? body.lang : undefined // tuỳ chọn: bản cài cũ không gửi → trang theo Accept-Language
+    const state = createFlow({ installId: install.id, provider, returnUrl: install.appUrl + RETURN_PATHS[provider], createdBy, nonceHash, ...(lang ? { lang } : {}) })
     return json({ url: `${base}/api/oauth/start/${state}` })
   })
 }

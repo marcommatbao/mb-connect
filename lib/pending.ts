@@ -7,6 +7,7 @@
 // Ai thấy đường dẫn cũng không biết oauthState → không chen được tài khoản Google của mình vào lượt của người khác.
 // ============================================================
 import crypto from "crypto"
+import type { Lang } from "./i18n"
 import type { Provider } from "./store"
 
 export const PENDING_TTL_MS = 10 * 60 * 1000
@@ -17,6 +18,8 @@ export interface PendingFlow {
   returnUrl: string
   createdBy: string
   nonceHash: string
+  /** Ngôn ngữ người bấm đang dùng ở bản cài (trang trung gian hiện theo). Thiếu → theo Accept-Language. */
+  lang?: Lang
   createdAt: number
 }
 

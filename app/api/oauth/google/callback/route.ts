@@ -6,6 +6,7 @@ import { createPendingConnection, primeToken } from "@/lib/connections"
 import { safeEqualHex, sha256Hex } from "@/lib/crypto"
 import { clientIp } from "@/lib/http"
 import { errorPage } from "@/lib/html"
+import { langFromRequest, strings } from "@/lib/i18n"
 import { readCookie, redirectToInstall, stateCookieName, type ReturnReason } from "@/lib/oauth-flow"
 import { consumeState } from "@/lib/pending"
 import { GoogleOAuthError, exchangeGoogleCode } from "@/lib/providers/google"
@@ -21,7 +22,8 @@ export async function GET(req: Request) {
   const flow = state ? consumeState(state) : null
   if (!flow || flow.provider !== "google") {
     await audit({ event: "oauth.google.callback", ok: false, ip, reason: "unknown_state" })
-    return errorPage("Đường dẫn kết nối đã hết hạn hoặc đã dùng.", 410)
+    const lang = langFromRequest(req)
+    return errorPage(strings(lang).expired, 410, lang)
   }
   const base = { event: "oauth.google.callback", ip, installId: flow.installId, provider: "google" }
   const fail = async (reason: ReturnReason) => {
