@@ -38,10 +38,10 @@ const VI = {
 
 const EN: typeof VI = {
   htmlLang: "en",
-  brand: "Mat Bao Connect",
+  brand: "Mắt Bão Connect",
   expired: "This connection link has expired or has already been used.",
   errorTitle: "Couldn't connect",
-  errorHint: "Go back to AdsCommand and click Connect again. If the problem continues, contact Mat Bao.",
+  errorHint: "Go back to AdsCommand and click Connect again. If the problem continues, contact Mắt Bão.",
   pageTitle: "Connect {label}",
   heading: "Connect {label} to AdsCommand",
   lead: "You are about to allow the AdsCommand workspace below to access your {label} account.",
@@ -53,7 +53,7 @@ const EN: typeof VI = {
   warn: "Only continue if this is your own business's AdsCommand. If someone sent you this link and you don't recognise the workspace above, click Cancel.",
   continue: "Continue to {label}",
   cancel: "Cancel",
-  footer: "Mat Bao keeps the application credentials; the workspace only receives short-lived access to the accounts you choose.",
+  footer: "Mắt Bão keeps the application credentials; the workspace only receives short-lived access to the accounts you choose.",
 }
 
 export type Strings = typeof VI

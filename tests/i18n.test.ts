@@ -35,7 +35,7 @@ describe("trang trung gian song ngữ", () => {
     const html = await body(await getPage(l, { "accept-language": "vi-VN" }))
     expect(html).toContain('<html lang="en"')
     expect(html).toContain("Connect Google Ads to AdsCommand")
-    expect(html.replace("Khách A", "")).not.toMatch(VI_CHARS)
+    expect(html.replace("Khách A", "").replaceAll("Mắt Bão", "")).not.toMatch(VI_CHARS)
     const go = await oauthStart.POST(new Request(`${GW}/api/oauth/start/${l}`, { method: "POST", body: new URLSearchParams({ action: "continue" }) }), params({ link: l }))
     expect(new URL(go.headers.get("location")!).searchParams.get("hl")).toBe("en")
   })
@@ -58,7 +58,7 @@ describe("trang trung gian song ngữ", () => {
   it("trang lỗi (đường dẫn hết hạn / callback state lạ) theo Accept-Language", async () => {
     const e1 = await body(await getPage("khong-ton-tai", { "accept-language": "en" }))
     expect(e1).toContain("Couldn&#39;t connect")
-    expect(e1).not.toMatch(VI_CHARS)
+    expect(e1.replaceAll("Mắt Bão", "")).not.toMatch(VI_CHARS)
     const e2 = await body(await callback.GET(new Request(`${GW}/api/oauth/google/callback?state=x&code=y`, { headers: { "accept-language": "en-GB" } })))
     expect(e2).toContain("expired")
     expect(await body(await getPage("khong-ton-tai"))).toContain("Không kết nối được")
